@@ -1,14 +1,15 @@
-apply plugin: 'com.android.application'
+apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion 28
+
     defaultConfig {
-        applicationId "com.timmy.hencoderlearn"
         minSdkVersion 18
         targetSdkVersion 28
         versionCode 1
         versionName "1.0"
     }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -20,5 +21,4 @@ android {
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation project(':hencoder-core')
-    implementation project(':thumbup')
 }

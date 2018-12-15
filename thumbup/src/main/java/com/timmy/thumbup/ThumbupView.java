@@ -7,10 +7,14 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.support.annotation.Nullable;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
+import android.view.animation.OvershootInterpolator;
 
 /**
  * @author : timmy
@@ -36,8 +40,15 @@ public class ThumbupView extends View {
     /**
      * 文本颜色
      */
-    private static final int TEXT_DEFAULT_COLOR = Color.parseColor("#cccccc");
-    private static final int TEXT_DEFAULT_END_COLOR = Color.parseColor("#00cccccc");
+    private static final int TEXT_DEFAULT_COLOR = Color.parseColor("#CCCCCC");
+    private static final int TEXT_DEFAULT_END_COLOR = Color.parseColor("#00CCCCCC");
+
+
+    /**
+     * 圆圈颜色
+     */
+    private static final int START_COLOR = Color.parseColor("#00E24D3D");
+    private static final int END_COLOR = Color.parseColor("#88E24D3D");
 
     /**
      * 字体默认大小
@@ -88,6 +99,24 @@ public class ThumbupView extends View {
      */
     private long mLastClickTime;
     private boolean mToBigger;
+    private int mCicleX;
+    private int mCicleY;
+
+    /**
+     * 圆圈扩散的最小最大值，根据图标大小计算得出
+     */
+    private int RADIUS_MAX;
+    private int RADIUS_MIN;
+
+    /**
+     * 小手缩放
+     */
+    private static final float SCALE_MIN = 0.9f;
+    private static final float SCALE_MAX = 1f;
+    private float mScale;
+
+    private Paint mCiclePaint;
+    private Path mCiclePath;
 
     public ThumbupView(Context context) {
         super(context);
@@ -103,6 +132,8 @@ public class ThumbupView extends View {
     }
 
     private void init() {
+
+        initSize();
 
         mBitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         mTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -121,10 +152,31 @@ public class ThumbupView extends View {
         // 设置点击事件
         setOnClickListener(mOnClickListener);
 
+        mCiclePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        mCiclePaint.setColor(START_COLOR);
+        mCiclePaint.setStyle(Paint.Style.STROKE);
+        mCiclePaint.setStrokeWidth(dp_2);
+
+        mCiclePath = new Path();
+        mCiclePath.addCircle(mCicleX, mCicleY, RADIUS_MAX, Path.Direction.CW);
+    }
+
+    private void initSize() {
         OFFSET_MIN = 0;
 
         // 字体上下移动的距离
         OFFSET_MAX = 1.5f * sp2px(TEXT_DEFAULT_SIZE);
+
+        mCicleX = dip2px(THUMB_WIDTH / 2);
+        // 这个距离是拇指的中点的位置
+        mCicleY = dip2px(18);
+
+        // 为了包住拇指和点，以中点为中心的最小半径，即扩散的最大半径
+        RADIUS_MIN = dp_8;
+        RADIUS_MAX = dip2px(16);
+
+        // 小手缩放的大小
+        mScale = 1;
     }
 
     private OnClickListener mOnClickListener = new OnClickListener() {
@@ -141,25 +193,37 @@ public class ThumbupView extends View {
                 // 点赞
                 calculateChangeNum(1);
                 mLikeCount++;
-                showThumbupAnimation();
+                showThumbUpAnimation();
             }
-
-
         }
     };
 
     /**
      * 点赞的动画
      */
-    private void showThumbupAnimation() {
+    private void showThumbUpAnimation() {
         mIsThumbUp = true;
 
+        // 文字往上移动的动画
         ObjectAnimator offsetYAnimation = ObjectAnimator.ofFloat(this, "textOffsetY", OFFSET_MIN, OFFSET_MAX);
         offsetYAnimation.setDuration(SCALE_DURING + RADIUS_DURING);
 
-        AnimatorSet animatorSet = new AnimatorSet();
+        // 小圆圈向外扩散的动画
+        ObjectAnimator circleScaleAnimator = ObjectAnimator.ofFloat(this, "circleScale", RADIUS_MIN, RADIUS_MAX);
+        circleScaleAnimator.setDuration(RADIUS_DURING);
 
-        animatorSet.play(offsetYAnimation);
+        // 点赞的时候 小手缩放动画
+        ObjectAnimator thumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "thumbUpScale", SCALE_MIN, SCALE_MAX);
+        thumbUpScaleAnimation.setDuration(SCALE_DURING);
+        thumbUpScaleAnimation.setInterpolator(new OvershootInterpolator());
+
+        ObjectAnimator noThumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "noThumbUpScale", SCALE_MAX, SCALE_MIN);
+        noThumbUpScaleAnimation.setDuration(SCALE_DURING);
+
+        AnimatorSet animatorSet = new AnimatorSet();
+        animatorSet.play(thumbUpScaleAnimation).with(circleScaleAnimator);
+        animatorSet.play(offsetYAnimation).with(noThumbUpScaleAnimation);
+        animatorSet.play(thumbUpScaleAnimation).after(noThumbUpScaleAnimation);
         animatorSet.start();
     }
 
@@ -169,16 +233,23 @@ public class ThumbupView extends View {
     private void showThumbDownAnim() {
         mIsThumbUp = false;
 
-        ObjectAnimator textOffsetY = ObjectAnimator.ofFloat(this, "textOffsetY", OFFSET_MIN, -OFFSET_MAX);
-        textOffsetY.setDuration(SCALE_DURING + RADIUS_DURING);
+        // 文字往下移动的动画
+        ObjectAnimator offsetYAnimation = ObjectAnimator.ofFloat(this, "textOffsetY", OFFSET_MIN, -OFFSET_MAX);
+        offsetYAnimation.setDuration(SCALE_DURING + RADIUS_DURING);
+
+        // 点赞的时候 小手缩放动画
+        ObjectAnimator thumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "thumbUpScale", SCALE_MIN, SCALE_MAX);
+        thumbUpScaleAnimation.setDuration(SCALE_DURING);
+
+        // 灰色小手
+        ObjectAnimator noThumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "noThumbUpScale", SCALE_MAX, SCALE_MAX);
+        noThumbUpScaleAnimation.setDuration(SCALE_DURING);
 
         AnimatorSet animatorSet = new AnimatorSet();
-
-        animatorSet.play(textOffsetY);
-
+        animatorSet.play(thumbUpScaleAnimation).with(offsetYAnimation);
+        animatorSet.play(noThumbUpScaleAnimation).after(thumbUpScaleAnimation);
         animatorSet.start();
     }
-
 
     private void calculateChangeNum(int changeCount) {
         if (changeCount == 0) {
@@ -270,7 +341,6 @@ public class ThumbupView extends View {
             default:
                 break;
         }
-
         return result;
     }
 
@@ -296,7 +366,19 @@ public class ThumbupView extends View {
     }
 
     private void drawIcon(Canvas canvas) {
-        canvas.drawBitmap(mLikeUnSelectedBitmap, mStartX, mStartY + dp_8, mBitmapPaint);
+
+        if (mIsThumbUp) {
+            canvas.save();
+            canvas.clipPath(mCiclePath);
+            canvas.drawBitmap(mLikeSelectedShiningBitmap, mStartX + dp_2, mStartY, mBitmapPaint);
+            canvas.restore();
+
+            // 画出红色点赞图片
+            canvas.drawBitmap(mLikeSelectedBitmap, mStartX, mStartY + dp_8, mBitmapPaint);
+        } else {
+            // 画灰色点赞图片
+            canvas.drawBitmap(mLikeUnSelectedBitmap, mStartX, mStartY + dp_8, mBitmapPaint);
+        }
     }
 
     private void drawText(Canvas canvas) {
@@ -386,6 +468,70 @@ public class ThumbupView extends View {
     @SuppressWarnings("unused")
     public float getTextOffsetY() {
         return OFFSET_MIN;
+    }
+
+    @SuppressWarnings("unused")
+    public void setCircleScale(float circleScale) {
+
+        mCiclePath = new Path();
+        mCiclePath.addCircle(mStartX + mCicleX, mStartY + mCicleY, circleScale, Path.Direction.CW);
+
+        float fraction = (RADIUS_MAX - circleScale) / (RADIUS_MAX - RADIUS_MIN);
+        mCiclePaint.setColor((Integer) evaluate(fraction, START_COLOR, END_COLOR));
+
+        postInvalidate();
+    }
+
+    @SuppressWarnings("unused")
+    public float getDrawablePadding() {
+        return RADIUS_MAX;
+    }
+
+    @SuppressWarnings("unused")
+    public void setThumbUpScale(float scale) {
+        mScale = scale;
+        Matrix matrix = new Matrix();
+        matrix.postScale(mScale, mScale);
+
+        Log.i(TAG, "setThumbUpScale scale: " + scale);
+
+        mLikeSelectedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_messages_like_selected);
+
+        mLikeSelectedBitmap = Bitmap.createBitmap(mLikeSelectedBitmap, 0, 0,
+                mLikeSelectedBitmap.getWidth(),
+                mLikeSelectedBitmap.getHeight(),
+                matrix, true);
+        postInvalidate();
+    }
+
+    @SuppressWarnings("unused")
+    public float getThumbUpScale() {
+        return mScale;
+    }
+
+    @SuppressWarnings("unused")
+    public void setNoThumbUpScale(float scale) {
+
+        mScale = scale;
+        Matrix matrix = new Matrix();
+        matrix.postScale(mScale, mScale);
+
+
+        Log.i(TAG, "setNoThumbUpScale scale: " + scale);
+
+        mLikeUnSelectedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_messages_like_unselected);
+
+        mLikeUnSelectedBitmap = Bitmap.createBitmap(mLikeUnSelectedBitmap, 0, 0,
+                mLikeUnSelectedBitmap.getWidth(),
+                mLikeUnSelectedBitmap.getHeight(),
+                matrix, true);
+
+        postInvalidate();
+    }
+
+    @SuppressWarnings("unused")
+    public float getNoThumbUpScale() {
+        return mScale;
     }
 
     private int dip2px(float dpValue) {

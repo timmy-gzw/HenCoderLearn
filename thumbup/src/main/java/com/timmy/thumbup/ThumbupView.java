@@ -1,5 +1,7 @@
 package com.timmy.thumbup;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.content.Context;
@@ -144,8 +146,6 @@ public class ThumbupView extends View {
         mLikeSelectedShiningBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_messages_like_selected_shining);
         mLikeSelectedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_messages_like_selected);
 
-        mDrawablePadding = dp_2 * 2;
-
         // 这里text的坐标,会偏移thunb的宽度+一个固定的padding
         mTextStartX = dip2px(THUMB_WIDTH) + mDrawablePadding;
         nums = new String[]{String.valueOf(mLikeCount), "", ""};
@@ -162,6 +162,9 @@ public class ThumbupView extends View {
     }
 
     private void initSize() {
+
+        mDrawablePadding = dp_2 * 2;
+
         OFFSET_MIN = 0;
 
         // 字体上下移动的距离
@@ -182,13 +185,17 @@ public class ThumbupView extends View {
     private OnClickListener mOnClickListener = new OnClickListener() {
         @Override
         public void onClick(View v) {
+
+            if ((System.currentTimeMillis() - mLastClickTime) < (SCALE_DURING + RADIUS_DURING)) {
+                return;
+            }
             mLastClickTime = System.currentTimeMillis();
+            canceleAnimation();
             if (mIsThumbUp) {
                 // 取消点赞
                 calculateChangeNum(-1);
                 mLikeCount--;
                 showThumbDownAnim();
-
             } else {
                 // 点赞
                 calculateChangeNum(1);
@@ -198,48 +205,27 @@ public class ThumbupView extends View {
         }
     };
 
-    /**
-     * 点赞的动画
-     */
-    private void showThumbUpAnimation() {
-        mIsThumbUp = true;
-
-        // 文字往上移动的动画
-        ObjectAnimator offsetYAnimation = ObjectAnimator.ofFloat(this, "textOffsetY", OFFSET_MIN, OFFSET_MAX);
-        offsetYAnimation.setDuration(SCALE_DURING + RADIUS_DURING);
-
-        // 小圆圈向外扩散的动画
-        ObjectAnimator circleScaleAnimator = ObjectAnimator.ofFloat(this, "circleScale", RADIUS_MIN, RADIUS_MAX);
-        circleScaleAnimator.setDuration(RADIUS_DURING);
-
-        // 点赞的时候 小手缩放动画
-        ObjectAnimator thumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "thumbUpScale", SCALE_MIN, SCALE_MAX);
-        thumbUpScaleAnimation.setDuration(SCALE_DURING);
-        thumbUpScaleAnimation.setInterpolator(new OvershootInterpolator());
-
-        ObjectAnimator noThumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "noThumbUpScale", SCALE_MAX, SCALE_MIN);
-        noThumbUpScaleAnimation.setDuration(SCALE_DURING);
-
-        AnimatorSet animatorSet = new AnimatorSet();
-        animatorSet.play(thumbUpScaleAnimation).with(circleScaleAnimator);
-        animatorSet.play(offsetYAnimation).with(noThumbUpScaleAnimation);
-        animatorSet.play(thumbUpScaleAnimation).after(noThumbUpScaleAnimation);
-        animatorSet.start();
-    }
 
     /**
      * 取消点赞的动画
      */
     private void showThumbDownAnim() {
         mIsThumbUp = false;
+        // 点赞的时候 小手缩放动画
+        ObjectAnimator thumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "thumbUpScale", SCALE_MIN, SCALE_MAX);
+        thumbUpScaleAnimation.setDuration(SCALE_DURING);
+
+        thumbUpScaleAnimation.addListener(new ClickAnimatorListener() {
+            @Override
+            public void onAnimationRealEnd(Animator animation) {
+                mIsThumbUp = false;
+            }
+        });
+
 
         // 文字往下移动的动画
         ObjectAnimator offsetYAnimation = ObjectAnimator.ofFloat(this, "textOffsetY", OFFSET_MIN, -OFFSET_MAX);
         offsetYAnimation.setDuration(SCALE_DURING + RADIUS_DURING);
-
-        // 点赞的时候 小手缩放动画
-        ObjectAnimator thumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "thumbUpScale", SCALE_MIN, SCALE_MAX);
-        thumbUpScaleAnimation.setDuration(SCALE_DURING);
 
         // 灰色小手
         ObjectAnimator noThumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "noThumbUpScale", SCALE_MAX, SCALE_MAX);
@@ -248,7 +234,73 @@ public class ThumbupView extends View {
         AnimatorSet animatorSet = new AnimatorSet();
         animatorSet.play(thumbUpScaleAnimation).with(offsetYAnimation);
         animatorSet.play(noThumbUpScaleAnimation).after(thumbUpScaleAnimation);
+
+        animatorSet.addListener(new ClickAnimatorListener() {
+            @Override
+            public void onAnimationRealEnd(Animator animation) {
+                Log.i(TAG, "showThumbDownAnim: 动画结束了");
+            }
+        });
+
         animatorSet.start();
+
+        mAnimatorSet = animatorSet;
+    }
+
+    /**
+     * 点赞的动画
+     */
+    private void showThumbUpAnimation() {
+
+        ObjectAnimator noThumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "noThumbUpScale", SCALE_MAX, SCALE_MIN);
+        noThumbUpScaleAnimation.setDuration(SCALE_DURING);
+
+        noThumbUpScaleAnimation.addListener(new ClickAnimatorListener() {
+            @Override
+            public void onAnimationRealEnd(Animator animation) {
+                mIsThumbUp = true;
+            }
+        });
+
+        // 文字往上移动的动画
+        ObjectAnimator offsetYAnimation = ObjectAnimator.ofFloat(this, "textOffsetY", OFFSET_MIN, OFFSET_MAX);
+        offsetYAnimation.setDuration(SCALE_DURING + RADIUS_DURING);
+
+        // 点赞的时候 小手缩放动画
+        ObjectAnimator thumbUpScaleAnimation = ObjectAnimator.ofFloat(this, "thumbUpScale", SCALE_MIN, SCALE_MAX);
+        thumbUpScaleAnimation.setDuration(SCALE_DURING);
+        thumbUpScaleAnimation.setInterpolator(new OvershootInterpolator());
+
+        // 小圆圈向外扩散的动画
+        ObjectAnimator circleScaleAnimator = ObjectAnimator.ofFloat(this, "circleScale", RADIUS_MIN, RADIUS_MAX);
+        circleScaleAnimator.setDuration(RADIUS_DURING);
+
+        AnimatorSet animatorSet = new AnimatorSet();
+        animatorSet.play(thumbUpScaleAnimation).with(circleScaleAnimator);
+        animatorSet.play(offsetYAnimation).with(noThumbUpScaleAnimation);
+        animatorSet.play(thumbUpScaleAnimation).after(noThumbUpScaleAnimation);
+
+        animatorSet.addListener(new ClickAnimatorListener() {
+            @Override
+            public void onAnimationRealEnd(Animator animation) {
+                Log.i(TAG, "showThumbUpAnimation: 动画结束了");
+            }
+        });
+        animatorSet.start();
+
+        mAnimatorSet = animatorSet;
+    }
+
+    private AnimatorSet mAnimatorSet;
+
+
+    private void canceleAnimation() {
+        mIsCanceled = true;
+
+        if (mAnimatorSet != null) {
+            mAnimatorSet.cancel();
+            mAnimatorSet = null;
+        }
     }
 
     private void calculateChangeNum(int changeCount) {
@@ -368,10 +420,16 @@ public class ThumbupView extends View {
     private void drawIcon(Canvas canvas) {
 
         if (mIsThumbUp) {
-            canvas.save();
-            canvas.clipPath(mCiclePath);
-            canvas.drawBitmap(mLikeSelectedShiningBitmap, mStartX + dp_2, mStartY, mBitmapPaint);
-            canvas.restore();
+            if (mCiclePath != null) {
+                canvas.save();
+                canvas.clipPath(mCiclePath);
+                canvas.drawBitmap(mLikeSelectedShiningBitmap, mStartX + dp_2, mStartY, mBitmapPaint);
+                canvas.restore();
+
+                canvas.drawCircle(mStartX + mCicleX, mStartY + mCicleY, mRadius, mCiclePaint);
+            } else {
+                canvas.drawBitmap(mLikeSelectedShiningBitmap, mStartX + dp_2, mStartY, mBitmapPaint);
+            }
 
             // 画出红色点赞图片
             canvas.drawBitmap(mLikeSelectedBitmap, mStartX, mStartY + dp_8, mBitmapPaint);
@@ -470,8 +528,14 @@ public class ThumbupView extends View {
         return OFFSET_MIN;
     }
 
+    float mRadius = 0;
+
     @SuppressWarnings("unused")
     public void setCircleScale(float circleScale) {
+
+        // Log.i(TAG, "circleScale1: " + circleScale);
+
+        mRadius = circleScale;
 
         mCiclePath = new Path();
         mCiclePath.addCircle(mStartX + mCicleX, mStartY + mCicleY, circleScale, Path.Direction.CW);
@@ -492,9 +556,6 @@ public class ThumbupView extends View {
         mScale = scale;
         Matrix matrix = new Matrix();
         matrix.postScale(mScale, mScale);
-
-        Log.i(TAG, "setThumbUpScale scale: " + scale);
-
         mLikeSelectedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_messages_like_selected);
 
         mLikeSelectedBitmap = Bitmap.createBitmap(mLikeSelectedBitmap, 0, 0,
@@ -515,9 +576,6 @@ public class ThumbupView extends View {
         mScale = scale;
         Matrix matrix = new Matrix();
         matrix.postScale(mScale, mScale);
-
-
-        Log.i(TAG, "setNoThumbUpScale scale: " + scale);
 
         mLikeUnSelectedBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.ic_messages_like_unselected);
 
@@ -563,5 +621,32 @@ public class ThumbupView extends View {
          * 取消回调
          */
         void thumbDownFinish();
+    }
+
+    private boolean mIsCanceled;
+
+    private abstract class ClickAnimatorListener extends AnimatorListenerAdapter {
+
+        @Override
+        public void onAnimationStart(Animator animation) {
+            super.onAnimationStart(animation);
+            mIsCanceled = false;
+        }
+
+        @Override
+        public void onAnimationEnd(Animator animation) {
+            super.onAnimationEnd(animation);
+            if (!mIsCanceled) {
+                onAnimationRealEnd(animation);
+            }
+        }
+
+        @Override
+        public void onAnimationCancel(Animator animation) {
+            super.onAnimationCancel(animation);
+            mIsCanceled = true;
+        }
+
+        public abstract void onAnimationRealEnd(Animator animation);
     }
 }

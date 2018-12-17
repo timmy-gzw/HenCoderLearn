@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.content.Context;
+import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -14,7 +15,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.support.annotation.Nullable;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.View;
 import android.view.animation.OvershootInterpolator;
 
@@ -125,16 +125,19 @@ public class ThumbupView extends View {
     }
 
     public ThumbupView(Context context, @Nullable AttributeSet attrs) {
-        super(context, attrs);
-        init();
+        this(context, attrs, 0);
     }
 
     public ThumbupView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        TypedArray typedArray = context.obtainStyledAttributes(attrs, R.styleable.thumbup_view);
+        mLikeCount = typedArray.getInt(R.styleable.thumbup_view_like_count, 0);
+        typedArray.recycle();
+
+        init();
     }
 
     private void init() {
-
         initSize();
 
         mBitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -222,7 +225,6 @@ public class ThumbupView extends View {
             }
         });
 
-
         // 文字往下移动的动画
         ObjectAnimator offsetYAnimation = ObjectAnimator.ofFloat(this, "textOffsetY", OFFSET_MIN, -OFFSET_MAX);
         offsetYAnimation.setDuration(SCALE_DURING + RADIUS_DURING);
@@ -238,7 +240,10 @@ public class ThumbupView extends View {
         animatorSet.addListener(new ClickAnimatorListener() {
             @Override
             public void onAnimationRealEnd(Animator animation) {
-                Log.i(TAG, "showThumbDownAnim: 动画结束了");
+                // 动画结束了
+                if (mThumbUpClickListener != null) {
+                    mThumbUpClickListener.thumbDownFinish();
+                }
             }
         });
 
@@ -283,7 +288,10 @@ public class ThumbupView extends View {
         animatorSet.addListener(new ClickAnimatorListener() {
             @Override
             public void onAnimationRealEnd(Animator animation) {
-                Log.i(TAG, "showThumbUpAnimation: 动画结束了");
+                // 动画结束了
+                if (mThumbUpClickListener != null) {
+                    mThumbUpClickListener.thumbUpFinish();
+                }
             }
         });
         animatorSet.start();
@@ -305,7 +313,7 @@ public class ThumbupView extends View {
 
     private void calculateChangeNum(int changeCount) {
         if (changeCount == 0) {
-            nums[0] = String.valueOf(changeCount);
+            nums[0] = String.valueOf(mLikeCount);
             nums[1] = "";
             nums[2] = "";
             return;
@@ -334,7 +342,7 @@ public class ThumbupView extends View {
                     if (i == 0) {
                         nums[0] = "";
                     } else {
-                        nums[0] = newNum.substring(0, 1);
+                        nums[0] = newNum.substring(0, i);
                     }
                     nums[1] = oldNum.substring(i);
                     nums[2] = newNum.substring(i);
@@ -348,8 +356,6 @@ public class ThumbupView extends View {
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         setMeasuredDimension(getWidth(widthMeasureSpec), getHeight(heightMeasureSpec));
     }
-
-    private static final String TAG = "gzw";
 
     private int getWidth(int measureSpec) {
         int result = 0;
@@ -418,7 +424,6 @@ public class ThumbupView extends View {
     }
 
     private void drawIcon(Canvas canvas) {
-
         if (mIsThumbUp) {
             if (mCiclePath != null) {
                 canvas.save();
@@ -532,9 +537,6 @@ public class ThumbupView extends View {
 
     @SuppressWarnings("unused")
     public void setCircleScale(float circleScale) {
-
-        // Log.i(TAG, "circleScale1: " + circleScale);
-
         mRadius = circleScale;
 
         mCiclePath = new Path();
@@ -611,6 +613,24 @@ public class ThumbupView extends View {
         mThumbUpClickListener = thumbUpClickListener;
     }
 
+    /**
+     * 设置点赞数
+     *
+     * @param likeCount
+     */
+    public ThumbupView setLikeCount(int likeCount) {
+        this.mLikeCount = likeCount;
+        calculateChangeNum(0);
+        requestLayout();
+        return this;
+    }
+
+    public ThumbupView setThumbup(boolean isThumbUp) {
+        this.mIsThumbUp = isThumbUp;
+        postInvalidate();
+        return this;
+    }
+
     public interface ThumbUpClickListener {
         /**
          * 点赞回调
@@ -647,6 +667,11 @@ public class ThumbupView extends View {
             mIsCanceled = true;
         }
 
+        /**
+         * 动画结束的回调
+         *
+         * @param animation
+         */
         public abstract void onAnimationRealEnd(Animator animation);
     }
 }
